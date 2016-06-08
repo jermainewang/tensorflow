@@ -57,6 +57,9 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
+// (jermaine)
+#include "tensorflow/stream_executor/stream.h"
+// (jermaine)
 
 namespace tensorflow {
 namespace {
@@ -1067,6 +1070,10 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
             VLOG(2) << this << " Async kernel done: "
                     << SummarizeNodeDef(item.node->def());
           }
+          // (jermaine) sync the stream
+          if (ctx->op_device_context() != nullptr) {
+            ctx->op_device_context()->stream()->BlockHostUntilDone();
+          }
           if (stats_collector_) nodestats::SetOpEnd(stats);
           EntryVector outputs;
           Status s = ProcessOutputs(item, ctx, &outputs, stats);
@@ -1110,6 +1117,11 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
         OpKernelContext ctx(&params, item.num_outputs);
         if (stats_collector_) nodestats::SetOpStart(stats);
         device->Compute(CHECK_NOTNULL(op_kernel), &ctx);
+        // (jermaine) sync the stream
+        if (ctx.op_device_context() != nullptr) {
+          ctx.op_device_context()->stream()->BlockHostUntilDone();
+        }
+        // (jermaine)
         // The final node in the step is always a Sink node. Block
         // this Op from completing until the device has finished all
         // queued operations. For devices like GPUs that continue to
